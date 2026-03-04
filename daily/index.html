@@ -189,6 +189,16 @@
     .btn-secondary { background: rgba(255,255,255,0.06); border-color: rgba(240,192,64,0.55); }
     .btn-secondary:hover { background: rgba(255,255,255,0.10); }
 
+    /* STREAK */
+    .streak-bar { display: flex; gap: 8px; justify-content: center; width: 100%; }
+    .streak-stat {
+      display: flex; flex-direction: column; align-items: center;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px; padding: 10px 0; flex: 1;
+    }
+    .streak-num { font-size: 1.4rem; font-weight: 900; color: var(--gold); line-height: 1; }
+    .streak-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-dim); margin-top: 4px; }
+
     /* MODALS */
     #modal-overlay,
     #changelog-overlay {
@@ -304,6 +314,7 @@
       <p>Come back tomorrow for a new word.</p>
       <div class="ap-result" id="ap-result"></div>
       <div class="ap-emoji" id="ap-emoji"></div>
+      <div class="streak-bar" id="ap-streak"></div>
       <div class="countdown-wrap">
         <div class="countdown-label">Next daily in</div>
         <div class="countdown-display" id="countdown">--:--:--</div>
@@ -342,6 +353,7 @@
       <div id="result-word-info" style="font-size:0.82rem; color:rgba(255,255,255,0.6); font-style:italic;
         background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:8px 14px;
         width:100%; text-align:center;"></div>
+      <div class="streak-bar" id="result-streak"></div>
       <div class="btn-row">
         <button class="new-game-btn btn-secondary" onclick="shareResult()">📋 Share</button>
       </div>
@@ -358,6 +370,7 @@
 <div id="toast"></div>
 
 <footer>
+  <p style="font-size:0.68rem; color:rgba(255,255,255,0.2); margin-bottom:6px; letter-spacing:1px;">v1.4</p>
   <p>MYTHICLE is unofficial fan-made content and is not affiliated with, endorsed by, or licensed by Mythical Entertainment, Good Mythical Morning, or Rhett &amp; Link in any way.</p>
 </footer>
 
@@ -369,12 +382,12 @@
 
     <div class="cl-entry">
       <div class="cl-version-row">
-        <span class="cl-badge current">March 2, 2026 | 10:00 PM EST </span>
+        <span class="cl-badge current">March 3, 2026 | 10:56 PM EST</span>
         <span class="cl-date">latest</span>
       </div>
-      <p class="cl-body">What's new: Color Palettes and a Feedback form!</p>
-      <p class="cl-body">You can now under the "Settings and How to Play" tab select between 3 palettes: basic wordle, RandL's fav colors, and the Wheel of Mythicality colors!</p>
-      <p class="cl-body">If you don't like this change or have other things you would like to share, there is also a feedback form you can find under "Settings and Hot to Play" too! - Keplxr</p>
+      <p class="cl-body">What's new: Version Indicator and Streak tracker</p>
+      <p class="cl-body">Because I'm sure not everyone is reading these devlogs, I added a version indicator at the bottom of the page so it is easier to tell when it has been updated.</p>
+      <p class="cl-body">Also both daily and infinite now have streaks and win percentages. - Keplxr</p>
     </div>
 
   </div>
@@ -635,6 +648,42 @@ function saveDailyStorage(data) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
 }
 
+/* ── STREAK ── */
+const STREAK_KEY = 'mythicle_streak_v1';
+function getStreakData() {
+  try {
+    const r = localStorage.getItem(STREAK_KEY);
+    return r ? JSON.parse(r) : { cur: 0, max: 0, played: 0, won: 0, last: null };
+  } catch { return { cur: 0, max: 0, played: 0, won: 0, last: null }; }
+}
+function saveStreakData(d) { try { localStorage.setItem(STREAK_KEY, JSON.stringify(d)); } catch {} }
+function getYesterdayISO() { const d = new Date(); d.setDate(d.getDate() - 1); return getLocalISODate(d); }
+function updateStreak(won) {
+  const s = getStreakData();
+  if (s.last === DAILY_DATE) return s;
+  s.played++;
+  if (won) {
+    s.won++;
+    s.cur = (s.last === getYesterdayISO() || s.last === null) ? s.cur + 1 : 1;
+    s.max = Math.max(s.max, s.cur);
+  } else {
+    s.cur = 0;
+  }
+  s.last = DAILY_DATE;
+  saveStreakData(s);
+  return s;
+}
+function renderStreak(id) {
+  const el = document.getElementById(id); if (!el) return;
+  const s = getStreakData();
+  const winPct = s.played > 0 ? Math.round(s.won / s.played * 100) : 0;
+  el.innerHTML = `
+    <div class="streak-stat"><div class="streak-num">${s.cur}</div><div class="streak-label">🔥 Streak</div></div>
+    <div class="streak-stat"><div class="streak-num">${s.max}</div><div class="streak-label">🏆 Best</div></div>
+    <div class="streak-stat"><div class="streak-num">${s.played}</div><div class="streak-label">📅 Played</div></div>
+    <div class="streak-stat"><div class="streak-num">${winPct}%</div><div class="streak-label">✅ Win %</div></div>`;
+}
+
 /* ── COUNTDOWN ── */
 let countdownInterval = null;
 function startCountdown() {
@@ -659,6 +708,7 @@ function showAlreadyPlayed(saved) {
     : `${DAILY_DATE} • The word was: ${saved.word} • X/${saved.maxGuesses}`;
   document.getElementById('ap-result').textContent = scoreStr;
   document.getElementById('ap-emoji').textContent  = saved.emoji || '';
+  renderStreak('ap-streak');
   startCountdown();
 }
 
@@ -813,6 +863,8 @@ function showResult(won, guessCount) {
   document.getElementById('result').classList.add('show');
   const emoji = guessHistory.map(r=>colorsToEmoji(r.colors)).join('\n');
   saveDailyStorage({ won, guessCount, maxGuesses, timeSec, hintUsed, emoji, word:answer });
+  updateStreak(won);
+  renderStreak('result-streak');
 }
 
 /* ── TOAST ── */
